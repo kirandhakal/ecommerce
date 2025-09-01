@@ -2,12 +2,9 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/userModel'); 
 
 async function checkSellerStatus(req, res, next) {
-  // console.log("🔐 checkSellerStatus middleware called");
-
   try {
     const token = req.cookies?.token;
-    // console.log("Received token:", token);
-
+    
     if (!token) {
       return res.status(401).json({
         message: "User not logged in",
@@ -28,7 +25,7 @@ async function checkSellerStatus(req, res, next) {
 
       const userId = decoded?._id;
       const user = await User.findById(userId);
-
+      
       if (!user) {
         return res.status(404).json({
           message: "User not found",
