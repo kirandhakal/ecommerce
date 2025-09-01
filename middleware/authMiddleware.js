@@ -1,32 +1,39 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/userModel'); // Adjust path if needed
 
-const authMiddleware = async (req, res, next) => {
+async function authToken(req, res, next) {
   try {
-    // Get token from cookie or Authorization header
-    const token = req.cookies.token || req.header('Authorization')?.replace('Bearer ', '');
-
+    console.log("authToken middleware called");
+    
+    const token = req.cookies?.token;
+    console.log("Received token:", token); // FIXED: removed "fee" 
+    
     if (!token) {
-      return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
+      return res.status(401).json({
+        message: "User is not logged in", // FIXED: typo "indee" -> "in"
+        error: true,
+        success: false,
+      });
     }
 
-    // Verify the token using your secret key
-    const decoded = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
-    // return res.status(404).json({ data:decoded });
-
-
-    // Attach user to request
-    req.user = await User.findById(decoded._id);
-
-    if (!req.user) {
-      return res.status(404).json({ success: false, message: 'User not found.', });
-    }
-
-    next();
-  } catch (error) {
-    console.error('Auth Middleware Error:', error);
-    res.status(401).json({ success: false, message: 'Invalid token.' });
+    jwt.verify(token, process.env.TOKEN_SECRET_KEY, (err, decoded) => {
+      if (err) {
+        console.log("JWT verification error:", err.message);
+        return res.status(403).json({
+          message: "Invalid or expired token",
+          error: true,
+          success: false,
+        });
+      }
+      req.userId = decoded?._id;
+      next(); 
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message || "Authentication error",
+      error: true,
+      success: false,
+    });
   }
-};
+}
 
-module.exports = authMiddleware;
+module.exports = authToken;
