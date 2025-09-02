@@ -1,63 +1,75 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/userModel'); 
+const User = require('../models/userModel');
 
 async function checkSellerStatus(req, res, next) {
   try {
-    const token = req.cookies?.token;
-    
+    // Get token from multiple sources
+    const token = req.cookies?.token || 
+                  req.header('Authorization')?.replace('Bearer ', '');
+
     if (!token) {
       return res.status(401).json({
-        message: "User not logged in",
+        message: "Authentication required",
         error: true,
         success: false,
       });
     }
 
-    jwt.verify(token, process.env.TOKEN_SECRET_KEY, async (err, decoded) => {
-      if (err) {
-        console.log("JWT error:", err.message);
-        return res.status(403).json({
-          message: "Invalid or expired token",
-          error: true,
-          success: false,
-        });
-      }
+    // Verify token and get user data
+    const decoded = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
+    const user = await User.findById(decoded._id).select('-password');
 
-      const userId = decoded?._id;
-      const user = await User.findById(userId);
-      
-      if (!user) {
-        return res.status(404).json({
-          message: "User not found",
-          error: true,
-          success: false,
-        });
-      }
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+        error: true,
+        success: false,
+      });
+    }
 
-      if (user.role !== 'SELLER') {
-        return res.status(403).json({
-          message: "Access denied: Not a seller",
-          error: true,
-          success: false,
-        });
-      }
+    // Check if user is a seller
+    if (user.role !== 'SELLER') {
+      return res.status(403).json({
+        message: "Access denied: Seller privileges required",
+        error: true,
+        success: false,
+      });
+    }
 
-      if (user.status !== 'ACCEPTED' && user.status !== 'ACTIVE') {
-        return res.status(403).json({
-          message: `Access denied: Seller status is '${user.status}'`,
-          error: true,
-          success: false,
-        });
-      }
+    // Check seller status
+    const validStatuses = ['ACCEPTED', 'ACTIVE'];
+    if (!validStatuses.includes(user.status)) {
+      return res.status(403).json({
+        message: `Access denied: Seller account status is '${user.status}'. Contact support for assistance.`,
+        error: true,
+        success: false,
+      });
+    }
 
-      req.userId = userId;
-      req.user = user;
-      next();
-    });
+    // Attach user data to request
+    req.userId = user._id;
+    req.user = user;
+    next();
+
   } catch (err) {
-    console.error("Middleware error:", err);
-    res.status(500).json({
-      message: "Internal server error",
+    console.error("Seller Status Check Error:", err);
+    
+    let message = "Internal server error";
+    let statusCode = 500;
+    
+    if (err.name === 'TokenExpiredError') {
+      message = "Token has expired";
+      statusCode = 403;
+    } else if (err.name === 'JsonWebTokenError') {
+      message = "Invalid token";
+      statusCode = 403;
+    } else if (err.name === 'CastError') {
+      message = "Invalid user ID";
+      statusCode = 400;
+    }
+    
+    res.status(statusCode).json({
+      message,
       error: true,
       success: false,
     });
