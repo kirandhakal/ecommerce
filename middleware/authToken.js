@@ -2,33 +2,45 @@ const jwt = require('jsonwebtoken');
 
 async function authToken(req, res, next) {
   try {
-    const token = req.cookies?.token;
-    console.log("authToken middleware called");
-    console.log("Received token:", token); // FIXED: removed "fee"
-    
+    // Get token from multiple sources for flexibility
+    const token = req.cookies?.token || 
+                  req.header('Authorization')?.replace('Bearer ', '') ||
+                  req.body?.token;
+
     if (!token) {
       return res.status(401).json({
-        message: "User is not logged in", // FIXED: "indee" -> "in"
+        message: "Access denied. No authentication token provided.",
         error: true,
         success: false,
       });
     }
-    
+
+    // Verify token
     jwt.verify(token, process.env.TOKEN_SECRET_KEY, (err, decoded) => {
       if (err) {
-        console.log("JWT verification error:", err.message);
+        let message = "Invalid token";
+        if (err.name === 'TokenExpiredError') {
+          message = "Token has expired";
+        } else if (err.name === 'JsonWebTokenError') {
+          message = "Invalid token format";
+        }
+        
         return res.status(403).json({
-          message: "Invalid or expired token",
+          message,
           error: true,
           success: false,
         });
       }
-      req.userId = decoded?._id;
-      next(); 
+
+      req.userId = decoded._id;
+      req.user = { _id: decoded._id }; // Basic user info
+      next();
     });
+
   } catch (err) {
+    console.error('Auth Token Error:', err);
     res.status(500).json({
-      message: err.message || "Authentication error",
+      message: "Internal server error during authentication",
       error: true,
       success: false,
     });
