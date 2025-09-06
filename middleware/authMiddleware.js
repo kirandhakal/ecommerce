@@ -1,60 +1,48 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/userModel');
+const jwt = require("jsonwebtoken");
+const User = require("../models/userModel"); // optional if you want fresh user check
 
-const authMiddleware = async (req, res, next) => {
+async function authToken(req, res, next) {
   try {
-    // Get token from multiple sources
-    const token = req.cookies?.token || 
-                  req.header('Authorization')?.replace('Bearer ', '');
+    const token =
+      req.cookies?.token ||
+      req.header("Authorization")?.replace("Bearer ", "") ||
+      req.body?.token;
 
     if (!token) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Access denied. No token provided.',
-        error: true
+      return res.status(401).json({
+        message: "Access denied. No authentication token provided.",
+        error: true,
+        success: false,
       });
     }
 
-    // Verify token
+    // Verify JWT
     const decoded = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
-    
-    // Get full user data from database
-    const user = await User.findById(decoded._id).select('-password');
-    
+
+    // Optional: fetch user from DB to validate live role/status
+    const user = await User.findById(decoded._id);
     if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found.',
-        error: true
+      return res.status(404).json({
+        message: "User not found",
+        error: true,
+        success: false,
       });
     }
 
-    // Attach user to request
-    req.user = user;
     req.userId = user._id;
-    next();
+    req.user = user; // full user doc available
 
-  } catch (error) {
-    console.error('Auth Middleware Error:', error);
-    
-    let message = 'Invalid token.';
-    let statusCode = 401;
-    
-    if (error.name === 'TokenExpiredError') {
-      message = 'Token has expired.';
-    } else if (error.name === 'JsonWebTokenError') {
-      message = 'Invalid token format.';
-    } else if (error.name === 'CastError') {
-      message = 'Invalid user ID in token.';
-      statusCode = 400;
-    }
-    
-    res.status(statusCode).json({ 
-      success: false, 
+    next();
+  } catch (err) {
+    console.error("Auth Token Error:", err);
+    let message = "Invalid token";
+    if (err.name === "TokenExpiredError") message = "Token has expired";
+    res.status(401).json({
       message,
-      error: true
+      error: true,
+      success: false,
     });
   }
-};
+}
 
-module.exports = authMiddleware;
+module.exports = authToken;
